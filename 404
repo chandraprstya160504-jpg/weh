@@ -1,0 +1,441 @@
+local Players = game:GetService("Players")
+local InsertService = game:GetService("InsertService")
+local player = Players.LocalPlayer
+
+local CROWN_ID = 10159600649
+local heightOffset = 1.3
+local currentScale = 1.0
+
+-- Status awal diubah ke true agar langsung aktif saat eksekusi
+local crownActive = true
+local headlessActive = true
+local korbloxActive = true
+local isMinimized = false
+
+-- Asset ID Resmi Korblox Deathspeaker R6
+local KORBLOX_R6_MESH    = "rbxassetid://101851696"
+local KORBLOX_R6_TEXTURE = "rbxassetid://101851254"
+
+-- Asset ID Resmi Korblox Deathspeaker R15
+local KORBLOX_R15 = {
+    RightUpperLeg = {mesh = "rbxassetid://902942093", texture = "rbxassetid://902829926"},
+    RightLowerLeg = {mesh = "rbxassetid://902942096", texture = "rbxassetid://902829926"},
+    RightFoot     = {mesh = "rbxassetid://902942101", texture = "rbxassetid://902829926"}
+}
+
+local function getSafeParentGui()
+    if gethui then
+        return gethui()
+    end
+    local success, coreGui = pcall(function() return game:GetService("CoreGui") end)
+    if success and coreGui then
+        return coreGui
+    end
+    return player:WaitForChild("PlayerGui", 5)
+end
+
+local function loadAsset(id)
+    local getobj = getobjects or (game.GetObjects)
+    if getobj then
+        local success, objects = pcall(function()
+            return getobj(game, "rbxassetid://" .. id)
+        end)
+        if success and objects and #objects > 0 then
+            return objects[1]
+        end
+    end
+
+    local success2, model2 = pcall(function()
+        return InsertService:LoadAsset(id)
+    end)
+    if success2 and model2 then
+        return model2
+    end
+
+    return nil
+end
+
+local function applyHeadless(character, enable)
+    if not character then return end
+    local head = character:WaitForChild("Head", 3)
+    if head then
+        head.Transparency = enable and 1 or 0
+        local face = head:FindFirstChildOfClass("Decal")
+        if face then
+            face.Transparency = enable and 1 or 0
+        end
+    end
+end
+
+local function applyKorblox(character, enable)
+    if not character then return end
+    local humanoid = character:WaitForChild("Humanoid", 3)
+    if not humanoid then return end
+
+    if humanoid.RigType == Enum.HumanoidRigType.R15 then
+        for partName, data in pairs(KORBLOX_R15) do
+            local part = character:FindFirstChild(partName)
+            if part and part:IsA("MeshPart") then
+                if enable then
+                    if not part:FindFirstChild("OriginalMeshId") then
+                        local origMesh = Instance.new("StringValue", part)
+                        origMesh.Name = "OriginalMeshId"
+                        origMesh.Value = part.MeshId
+                        local origTex = Instance.new("StringValue", part)
+                        origTex.Name = "OriginalTextureId"
+                        origTex.Value = part.TextureID
+                    end
+                    part.MeshId = data.mesh
+                    part.TextureID = data.texture
+                else
+                    local origMesh = part:FindFirstChild("OriginalMeshId")
+                    local origTex = part:FindFirstChild("OriginalTextureId")
+                    if origMesh then part.MeshId = origMesh.Value end
+                    if origTex then part.TextureID = origTex.Value end
+                end
+            end
+        end
+    elseif humanoid.RigType == Enum.HumanoidRigType.R6 then
+        local rightLeg = character:FindFirstChild("Right Leg")
+        if rightLeg then
+            if enable then
+                rightLeg.Transparency = 1
+
+                local oldVisual = character:FindFirstChild("KorbloxR6VisualLeg")
+                if oldVisual then oldVisual:Destroy() end
+
+                local visualLeg = Instance.new("Part")
+                visualLeg.Name = "KorbloxR6VisualLeg"
+                visualLeg.Size = Vector3.new(1, 2, 1)
+                visualLeg.CanCollide = false
+                visualLeg.Massless = true
+                visualLeg.CFrame = rightLeg.CFrame
+
+                local mesh = Instance.new("SpecialMesh")
+                mesh.Name = "KorbloxMesh"
+                mesh.MeshType = Enum.MeshType.FileMesh
+                mesh.MeshId = KORBLOX_R6_MESH
+                mesh.TextureId = KORBLOX_R6_TEXTURE
+                mesh.Scale = Vector3.new(1, 1, 1)
+                mesh.Parent = visualLeg
+
+                local weld = Instance.new("WeldConstraint")
+                weld.Name = "KorbloxWeld"
+                weld.Part0 = rightLeg
+                weld.Part1 = visualLeg
+                weld.Parent = visualLeg
+
+                visualLeg.Parent = character
+            else
+                rightLeg.Transparency = 0
+                local visualLeg = character:FindFirstChild("KorbloxR6VisualLeg")
+                if visualLeg then
+                    visualLeg:Destroy()
+                end
+            end
+        end
+    end
+end
+
+local function applyCrown(character)
+    if not character then return end
+
+    local existingCrown = character:FindFirstChild("Local8BitCrown")
+    if not crownActive then
+        if existingCrown then
+            existingCrown:Destroy()
+        end
+        return
+    end
+
+    local head = character:WaitForChild("Head", 3)
+    if not head then return end
+
+    if existingCrown then
+        existingCrown:Destroy()
+    end
+
+    local loadedObject = loadAsset(CROWN_ID)
+    if not loadedObject then return end
+
+    local accessory = loadedObject:IsA("Accessory") and loadedObject or loadedObject:FindFirstChildOfClass("Accessory")
+    if not accessory then accessory = loadedObject end
+
+    accessory.Name = "Local8BitCrown"
+    local handle = accessory:FindFirstChild("Handle") or accessory:FindFirstChildWhichIsA("BasePart", true)
+
+    if handle then
+        handle.CanCollide = false
+
+        local mesh = handle:FindFirstChildOfClass("SpecialMesh")
+        local originalMeshScale = mesh and mesh.Scale or Vector3.new(1, 1, 1)
+        local originalSize = handle.Size
+
+        if mesh then
+            mesh.Scale = originalMeshScale * currentScale
+        else
+            handle.Size = originalSize * currentScale
+        end
+
+        local weld = Instance.new("Weld")
+        weld.Name = "CrownWeld"
+        weld.Part0 = head
+        weld.Part1 = handle
+        weld.C0 = CFrame.new(0, heightOffset, 0)
+        weld.Parent = handle
+
+        accessory.Parent = character
+    end
+end
+
+local function setupCharacter(character)
+    task.wait(0.2)
+    -- Dijalankan dalam thread terpisah agar tidak saling memblokir jika terjadi kegagalan muat
+    task.spawn(function() applyCrown(character) end)
+    task.spawn(function() applyHeadless(character, headlessActive) end)
+    task.spawn(function() applyKorblox(character, korbloxActive) end)
+end
+
+local function createCorner(parent, radius)
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, radius or 6)
+    corner.Parent = parent
+    return corner
+end
+
+local function createUI()
+    local parentGui = getSafeParentGui()
+    if not parentGui then return end
+
+    if parentGui:FindFirstChild("AvatarVisualGui") then
+        parentGui.AvatarVisualGui:Destroy()
+    end
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "AvatarVisualGui"
+    gui.ResetOnSpawn = false
+    gui.Parent = parentGui
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 220, 0, 225)
+    frame.Position = UDim2.new(0, 20, 0.3, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(24, 26, 32)
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Draggable = true
+    frame.ClipsDescendants = true
+    frame.Parent = gui
+    createCorner(frame, 8)
+
+    local titleBar = Instance.new("Frame")
+    titleBar.Size = UDim2.new(1, 0, 0, 32)
+    titleBar.BackgroundColor3 = Color3.fromRGB(34, 37, 46)
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = frame
+
+    local titleText = Instance.new("TextLabel")
+    titleText.Size = UDim2.new(1, -35, 1, 0)
+    titleText.Position = UDim2.new(0, 10, 0, 0)
+    titleText.Text = "Avatar Visual Menu"
+    titleText.Font = Enum.Font.SourceSansBold
+    titleText.TextSize = 15
+    titleText.TextColor3 = Color3.fromRGB(240, 240, 240)
+    titleText.BackgroundTransparency = 1
+    titleText.TextXAlignment = Enum.TextXAlignment.Left
+    titleText.Parent = titleBar
+
+    local btnMinimize = Instance.new("TextButton")
+    btnMinimize.Size = UDim2.new(0, 24, 0, 24)
+    btnMinimize.Position = UDim2.new(1, -28, 0, 4)
+    btnMinimize.Text = "_"
+    btnMinimize.Font = Enum.Font.SourceSansBold
+    btnMinimize.TextSize = 14
+    btnMinimize.TextColor3 = Color3.fromRGB(200, 200, 200)
+    btnMinimize.BackgroundColor3 = Color3.fromRGB(45, 48, 58)
+    btnMinimize.BorderSizePixel = 0
+    btnMinimize.Parent = titleBar
+    createCorner(btnMinimize, 4)
+
+    local content = Instance.new("Frame")
+    content.Name = "ContentContainer"
+    content.Size = UDim2.new(1, 0, 1, -32)
+    content.Position = UDim2.new(0, 0, 0, 32)
+    content.BackgroundTransparency = 1
+    content.Parent = frame
+
+    local COLOR_ON = Color3.fromRGB(46, 160, 80)
+    local COLOR_OFF = Color3.fromRGB(180, 50, 60)
+    local COLOR_BTN = Color3.fromRGB(42, 45, 55)
+
+    local btnCrownToggle = Instance.new("TextButton")
+    btnCrownToggle.Size = UDim2.new(0.9, 0, 0, 24)
+    btnCrownToggle.Position = UDim2.new(0.05, 0, 0, 8)
+    btnCrownToggle.Text = crownActive and "8-Bit Crown: ON" or "8-Bit Crown: OFF"
+    btnCrownToggle.Font = Enum.Font.SourceSansBold
+    btnCrownToggle.TextSize = 13
+    btnCrownToggle.BackgroundColor3 = crownActive and COLOR_ON or COLOR_OFF
+    btnCrownToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btnCrownToggle.BorderSizePixel = 0
+    btnCrownToggle.Parent = content
+    createCorner(btnCrownToggle, 5)
+
+    local lblHeight = Instance.new("TextLabel")
+    lblHeight.Size = UDim2.new(0.9, 0, 0, 14)
+    lblHeight.Position = UDim2.new(0.05, 0, 0, 36)
+    lblHeight.Text = "Tinggi Mahkota: " .. string.format("%.1f", heightOffset)
+    lblHeight.Font = Enum.Font.SourceSans
+    lblHeight.TextSize = 12
+    lblHeight.TextColor3 = Color3.fromRGB(180, 185, 200)
+    lblHeight.BackgroundTransparency = 1
+    lblHeight.Parent = content
+
+    local btnHeightDown = Instance.new("TextButton")
+    btnHeightDown.Size = UDim2.new(0.43, 0, 0, 20)
+    btnHeightDown.Position = UDim2.new(0.05, 0, 0, 52)
+    btnHeightDown.Text = "- Tinggi"
+    btnHeightDown.Font = Enum.Font.SourceSansBold
+    btnHeightDown.TextSize = 12
+    btnHeightDown.BackgroundColor3 = COLOR_BTN
+    btnHeightDown.TextColor3 = Color3.fromRGB(220, 220, 220)
+    btnHeightDown.BorderSizePixel = 0
+    btnHeightDown.Parent = content
+    createCorner(btnHeightDown, 4)
+
+    local btnHeightUp = Instance.new("TextButton")
+    btnHeightUp.Size = UDim2.new(0.43, 0, 0, 20)
+    btnHeightUp.Position = UDim2.new(0.52, 0, 0, 52)
+    btnHeightUp.Text = "+ Tinggi"
+    btnHeightUp.Font = Enum.Font.SourceSansBold
+    btnHeightUp.TextSize = 12
+    btnHeightUp.BackgroundColor3 = COLOR_BTN
+    btnHeightUp.TextColor3 = Color3.fromRGB(220, 220, 220)
+    btnHeightUp.BorderSizePixel = 0
+    btnHeightUp.Parent = content
+    createCorner(btnHeightUp, 4)
+
+    local lblScale = Instance.new("TextLabel")
+    lblScale.Size = UDim2.new(0.9, 0, 0, 14)
+    lblScale.Position = UDim2.new(0.05, 0, 0, 76)
+    lblScale.Text = "Ukuran Mahkota: " .. string.format("%.1f", currentScale)
+    lblScale.Font = Enum.Font.SourceSans
+    lblScale.TextSize = 12
+    lblScale.TextColor3 = Color3.fromRGB(180, 185, 200)
+    lblScale.BackgroundTransparency = 1
+    lblScale.Parent = content
+
+    local btnScaleDown = Instance.new("TextButton")
+    btnScaleDown.Size = UDim2.new(0.43, 0, 0, 20)
+    btnScaleDown.Position = UDim2.new(0.05, 0, 0, 92)
+    btnScaleDown.Text = "- Ukuran"
+    btnScaleDown.Font = Enum.Font.SourceSansBold
+    btnScaleDown.TextSize = 12
+    btnScaleDown.BackgroundColor3 = COLOR_BTN
+    btnScaleDown.TextColor3 = Color3.fromRGB(220, 220, 220)
+    btnScaleDown.BorderSizePixel = 0
+    btnScaleDown.Parent = content
+    createCorner(btnScaleDown, 4)
+
+    local btnScaleUp = Instance.new("TextButton")
+    btnScaleUp.Size = UDim2.new(0.43, 0, 0, 20)
+    btnScaleUp.Position = UDim2.new(0.52, 0, 0, 92)
+    btnScaleUp.Text = "+ Ukuran"
+    btnScaleUp.Font = Enum.Font.SourceSansBold
+    btnScaleUp.TextSize = 12
+    btnScaleUp.BackgroundColor3 = COLOR_BTN
+    btnScaleUp.TextColor3 = Color3.fromRGB(220, 220, 220)
+    btnScaleUp.BorderSizePixel = 0
+    btnScaleUp.Parent = content
+    createCorner(btnScaleUp, 4)
+
+    local separator = Instance.new("Frame")
+    separator.Size = UDim2.new(0.9, 0, 0, 1)
+    separator.Position = UDim2.new(0.05, 0, 0, 120)
+    separator.BackgroundColor3 = Color3.fromRGB(45, 48, 58)
+    separator.BorderSizePixel = 0
+    separator.Parent = content
+
+    local btnHeadless = Instance.new("TextButton")
+    btnHeadless.Size = UDim2.new(0.9, 0, 0, 24)
+    btnHeadless.Position = UDim2.new(0.05, 0, 0, 128)
+    btnHeadless.Text = headlessActive and "Headless: ON" or "Headless: OFF"
+    btnHeadless.Font = Enum.Font.SourceSansBold
+    btnHeadless.TextSize = 13
+    btnHeadless.BackgroundColor3 = headlessActive and COLOR_ON or COLOR_OFF
+    btnHeadless.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btnHeadless.BorderSizePixel = 0
+    btnHeadless.Parent = content
+    createCorner(btnHeadless, 5)
+
+    local btnKorblox = Instance.new("TextButton")
+    btnKorblox.Size = UDim2.new(0.9, 0, 0, 24)
+    btnKorblox.Position = UDim2.new(0.05, 0, 0, 158)
+    btnKorblox.Text = korbloxActive and "Korblox Leg: ON" or "Korblox Leg: OFF"
+    btnKorblox.Font = Enum.Font.SourceSansBold
+    btnKorblox.TextSize = 13
+    btnKorblox.BackgroundColor3 = korbloxActive and COLOR_ON or COLOR_OFF
+    btnKorblox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btnKorblox.BorderSizePixel = 0
+    btnKorblox.Parent = content
+    createCorner(btnKorblox, 5)
+
+    btnMinimize.MouseButton1Click:Connect(function()
+        isMinimized = not isMinimized
+        content.Visible = not isMinimized
+        frame.Size = isMinimized and UDim2.new(0, 220, 0, 32) or UDim2.new(0, 220, 0, 225)
+        btnMinimize.Text = isMinimized and "+" or "_"
+    end)
+
+    btnCrownToggle.MouseButton1Click:Connect(function()
+        crownActive = not crownActive
+        btnCrownToggle.Text = crownActive and "8-Bit Crown: ON" or "8-Bit Crown: OFF"
+        btnCrownToggle.BackgroundColor3 = crownActive and COLOR_ON or COLOR_OFF
+        if player.Character then applyCrown(player.Character) end
+    end)
+
+    btnHeightUp.MouseButton1Click:Connect(function()
+        heightOffset = heightOffset + 0.1
+        lblHeight.Text = "Tinggi Mahkota: " .. string.format("%.1f", heightOffset)
+        if player.Character then applyCrown(player.Character) end
+    end)
+
+    btnHeightDown.MouseButton1Click:Connect(function()
+        heightOffset = heightOffset - 0.1
+        lblHeight.Text = "Tinggi Mahkota: " .. string.format("%.1f", heightOffset)
+        if player.Character then applyCrown(player.Character) end
+    end)
+
+    btnScaleUp.MouseButton1Click:Connect(function()
+        currentScale = math.min(currentScale + 0.1, 5.0)
+        lblScale.Text = "Ukuran Mahkota: " .. string.format("%.1f", currentScale)
+        if player.Character then applyCrown(player.Character) end
+    end)
+
+    btnScaleDown.MouseButton1Click:Connect(function()
+        currentScale = math.max(currentScale - 0.1, 0.1)
+        lblScale.Text = "Ukuran Mahkota: " .. string.format("%.1f", currentScale)
+        if player.Character then applyCrown(player.Character) end
+    end)
+
+    btnHeadless.MouseButton1Click:Connect(function()
+        headlessActive = not headlessActive
+        if player.Character then applyHeadless(player.Character, headlessActive) end
+        btnHeadless.Text = headlessActive and "Headless: ON" or "Headless: OFF"
+        btnHeadless.BackgroundColor3 = headlessActive and COLOR_ON or COLOR_OFF
+    end)
+
+    btnKorblox.MouseButton1Click:Connect(function()
+        korbloxActive = not korbloxActive
+        if player.Character then applyKorblox(player.Character, korbloxActive) end
+        btnKorblox.Text = korbloxActive and "Korblox Leg: ON" or "Korblox Leg: OFF"
+        btnKorblox.BackgroundColor3 = korbloxActive and COLOR_ON or COLOR_OFF
+    end)
+end
+
+player.CharacterAdded:Connect(function(newCharacter)
+    setupCharacter(newCharacter)
+end)
+
+task.spawn(createUI)
+if player.Character then
+    setupCharacter(player.Character)
+end
